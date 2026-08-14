@@ -1,1 +1,200 @@
 
+BYTEFORGE DATABASE DESIGN DOCUMENT
+1. Project Overview
+
+2. Collections
+	1. Users
+		
+_id
+name
+email
+password
+role
+facilityId   -> facilities._id
+createdAt
+2. Facilities
+	_id
+name
+address
+status
+3. Zones
+	_id
+name
+occupancy
+capacity
+density
+facilityId -> facilities._id
+lastUpdated
+4. Queues
+_id
+name
+zoneId  -> -> zones._id
+slaMin
+avgServiceTime
+currentToken
+servingToken
+peopleWaiting
+status
+facilityId  -> facilities._id
+5. Staff
+_id
+name
+role
+desk
+status
+servedToday
+queueId -> queues._id
+facilityId -> facilities._id
+6. Tickets
+_id
+tokenNumber
+queueId-> queues._id
+visitorId  -> users._id
+staffId         -> staff._id
+label
+state
+position
+etaMin
+issuedAt
+calledAt
+servedAt
+7. Alerts
+_id
+queueId -> queues._id
+message
+severity
+createdAt
+status
+8. Settings	
+_id
+slaAlerts
+capacityAlerts
+dailyDigest
+anonymousOnly
+autoRetention
+shareBenchmarks
+facilityId-> facilities._id
+updatedAt
+           9. Analytics
+
+_id
+facilityId      -> facilities._id
+date
+queueId
+totalTickets
+avgWaitTime
+servedTickets
+peakHour
+
+3. Relationships
+	Facility
+│
+├── Zones
+├── Queues
+├── Staff
+└── Users
+└── Settings
+└── Analytics
+
+Queue
+│
+├── Tickets
+├── Alerts
+└── Analytics
+
+User
+│
+└── Tickets
+	
+Zone
+└── Queues
+
+4. MongoDB Indexes
+	Tickets:
+queueId
+visitorId
+state
+
+Queues:
+facilityId
+
+Staff:
+queueId
+
+Zones:
+facilityId
+
+5. API Mapping
+	Users
+GET    /api/users
+POST   /api/users
+PUT    /api/users/{id}
+DELETE /api/users/{id}
+
+Queues
+GET    /api/queues
+GET    /api/queues/{id}
+POST   /api/queues
+PUT    /api/queues/{id}
+
+Staff
+GET    /api/staff
+GET    /api/staff/{id}
+POST   /api/staff
+PUT    /api/staff/{id}
+
+Tickets
+GET    /api/tickets
+GET    /api/tickets/{id}
+POST   /api/tickets
+PUT    /api/tickets/{id}
+
+Zones
+GET    /api/zones
+GET    /api/zones/{id}
+PUT    /api/zones/{id}
+
+Settings
+GET    /api/settings
+PUT    /api/settings
+
+Alerts
+GET    /api/alerts
+POST   /api/alerts
+6. Database Relationships
+	Facility (1)
+   |
+   └── Zone (Many)
+           		|
+           └── Queue (Many)
+                   	|
+                   ├── Staff (Many)
+                   ├── Ticket (Many)
+                   └── Alert (Many)
+7. Sample Documents
+	Facilities
+{
+  "_id": "FAC001",
+  "name": "Main Facility",
+  "address": "Bhubaneswar",
+  "status": "active"
+}
+
+
+Zones
+{
+  "_id": "ZONE001",
+  "facilityId": "FAC001",
+  "name": "Ground Floor",
+  "status": "active"
+}
+
+
+Queues
+{
+  "_id": "QUE001",
+  "zoneId": "ZONE001",
+  "name": "Token Queue",
+  "avgWaitTime": 10
+}
+
