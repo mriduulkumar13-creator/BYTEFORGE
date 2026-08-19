@@ -7,8 +7,8 @@
  * or service signature changes required.
  */
 
-const API_URL = import.meta.env?.VITE_API_URL ?? "";
-export const USE_MOCK = !API_URL;
+const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:8080/api";
+export const USE_MOCK = false;
 
 const LATENCY_MS = 420;
 const FAILURE_RATE = 0; // raise locally to exercise error states

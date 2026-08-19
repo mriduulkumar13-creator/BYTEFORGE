@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { ROLES, SCENARIOS } from "@/lib/mock-data";
+import { byteforgeService } from "@/services/byteforge-service";
 
 const AppContext = createContext(null);
 
@@ -19,16 +20,31 @@ export function AppProvider({ children }) {
   const [scenarioId, setScenarioId] = useState("hospital");
   const [theme, setTheme] = useState("light");
   const [hydrated, setHydrated] = useState(false);
+  const [scenarios, setScenarios] = useState(SCENARIOS);
 
   useEffect(() => {
     const stored = readStored();
     if (stored?.role) setRole(stored.role);
-    if (stored?.scenarioId) setScenarioId(stored.scenarioId);
-    const preferred =
-      stored?.theme ??
-      (window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    setTheme(preferred);
-    setHydrated(true);
+    
+    byteforgeService.getScenarios().then((data) => {
+      if (data && data.length > 0) {
+        setScenarios(data);
+        if (stored?.scenarioId && data.find(s => s.id === stored.scenarioId)) {
+          setScenarioId(stored.scenarioId);
+        } else {
+          setScenarioId(data[0].id);
+        }
+      }
+    }).catch(err => {
+      console.error(err);
+      if (stored?.scenarioId) setScenarioId(stored.scenarioId);
+    }).finally(() => {
+      const preferred =
+        stored?.theme ??
+        (window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      setTheme(preferred);
+      setHydrated(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -44,13 +60,13 @@ export function AppProvider({ children }) {
       roles: ROLES,
       scenarioId,
       setScenarioId,
-      scenarios: SCENARIOS,
-      scenario: SCENARIOS.find((s) => s.id === scenarioId) ?? SCENARIOS[0],
+      scenarios,
+      scenario: scenarios.find((s) => s.id === scenarioId) ?? scenarios[0],
       theme,
       toggleTheme: () => setTheme((t) => (t === "dark" ? "light" : "dark")),
       hydrated,
     }),
-    [role, scenarioId, theme, hydrated],
+    [role, scenarioId, theme, hydrated, scenarios],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
