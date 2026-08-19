@@ -30,6 +30,7 @@ export function GetTokenPanel({ onTokenIssued }) {
     if (token) {
       toast.success(`Token ${token.tokenNumber} issued for ${token.queueName}`);
       onTokenIssued?.(token);
+      queues.reload();
     }
   }
 

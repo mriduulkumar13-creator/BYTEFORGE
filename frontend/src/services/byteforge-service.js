@@ -14,12 +14,71 @@ function dataset(scenarioId) {
 
 export const byteforgeService = {
   getScenarios() {
-    if (!USE_MOCK) return request("/scenarios");
+    if (!USE_MOCK) return request("/facilities");
     return mockResponse(() => SCENARIOS, { latency: 200 });
   },
 
-  getOverview(scenarioId) {
-    if (!USE_MOCK) return request(`/facilities/${scenarioId}/overview`);
+  async getOverview(scenarioId) {
+    if (!USE_MOCK) {
+      const rawQueues = await request("/queues").then(res => res.filter(q => q.facilityId === scenarioId)).catch(() => []);
+      const rawZones = await request("/zones").then(res => res.filter(z => z.facilityId === scenarioId)).catch(() => []);
+      const rawAlerts = await request("/alerts").then(res => res.filter(a => a.facilityId === scenarioId)).catch(() => []);
+
+      const queues = rawQueues.map(q => {
+        const wait = q.avgServiceTime || 0;
+        const sla = q.slaMin || 15;
+        let status = "healthy";
+        if (wait > sla) status = "critical";
+        else if (wait > sla * 0.75) status = "warning";
+
+        return {
+          ...q,
+          waiting: q.peopleWaiting || 0,
+          avgWaitMin: wait,
+          serving: 1,
+          counters: 1,
+          trend: [10, 15, 12, 18, 14, wait, wait],
+          zone: q.zoneId || "Zone",
+          status: status
+        };
+      });
+
+      const zones = rawZones.map(z => ({
+        ...z,
+        occupancy: z.occupancy || 0,
+        capacity: z.capacity || 100,
+        density: "moderate"
+      }));
+
+      const waiting = queues.reduce((sum, q) => sum + q.waiting, 0);
+      const avgWait = queues.length > 0 ? Math.round(queues.reduce((sum, q) => sum + q.avgWaitMin, 0) / queues.length) : 0;
+      const breaching = queues.filter((q) => q.avgWaitMin > q.slaMin).length;
+
+      const totalOccupancy = zones.reduce((s, z) => s + z.occupancy, 0);
+      const totalCapacity = zones.reduce((s, z) => s + z.capacity, 0);
+      const occupancy = zones.length > 0 ? Math.round((totalOccupancy / Math.max(1, totalCapacity)) * 100) : 0;
+
+      const queueIds = new Set(queues.map(q => q.id));
+      const alerts = rawAlerts.filter(a => queueIds.has(a.queueId)).map(a => ({
+        ...a,
+        severity: (a.severity || "info").toLowerCase(),
+        title: a.message || "Alert",
+        detail: a.detail || "",
+        at: a.createdAt || "just now"
+      }));
+
+      return {
+        kpis: [
+          { id: "waiting", label: "People waiting", value: waiting, unit: "", delta: 0 },
+          { id: "wait", label: "Average wait", value: avgWait, unit: "min", delta: 0 },
+          { id: "sla", label: "Queues over SLA", value: breaching, unit: `/ ${queues.length}`, delta: 0 },
+          { id: "occupancy", label: "Facility occupancy", value: occupancy, unit: "%", delta: 0 },
+        ],
+        queues,
+        alerts,
+        hourly: [],
+      };
+    }
     return mockResponse(() => {
       const d = dataset(scenarioId);
       const waiting = d.queues.reduce((sum, q) => sum + q.waiting, 0);
@@ -30,7 +89,7 @@ export const byteforgeService = {
       const occupancy = Math.round(
         (d.zones.reduce((s, z) => s + z.occupancy, 0) /
           d.zones.reduce((s, z) => s + z.capacity, 0)) *
-          100,
+        100,
       );
       return {
         kpis: [
@@ -46,13 +105,49 @@ export const byteforgeService = {
     });
   },
 
-  getQueues(scenarioId) {
-    if (!USE_MOCK) return request(`/facilities/${scenarioId}/queues`);
+  async getQueues(scenarioId) {
+    if (!USE_MOCK) {
+      const qs = await request("/queues");
+      return qs.filter(q => q.facilityId === scenarioId).map(q => {
+        const wait = q.avgServiceTime || 0;
+        const sla = q.slaMin || 15;
+        let status = "healthy";
+        if (wait > sla) status = "critical";
+        else if (wait > sla * 0.75) status = "warning";
+        return {
+          ...q,
+          waiting: q.peopleWaiting || 0,
+          avgWaitMin: wait,
+          serving: 1,
+          counters: 1,
+          trend: [10, 15, 12, 18, 14, wait, wait],
+          zone: q.zoneId || "Zone",
+          status: status
+        };
+      });
+    }
     return mockResponse(() => dataset(scenarioId).queues);
   },
 
   getQueue(scenarioId, queueId) {
-    if (!USE_MOCK) return request(`/facilities/${scenarioId}/queues/${queueId}`);
+    if (!USE_MOCK) return request(`/queues/${queueId}`).then(q => {
+      const wait = q.avgServiceTime || 0;
+      const sla = q.slaMin || 15;
+      let status = "healthy";
+      if (wait > sla) status = "critical";
+      else if (wait > sla * 0.75) status = "warning";
+      return {
+        ...q,
+        waiting: q.peopleWaiting || 0,
+        avgWaitMin: wait,
+        serving: 1,
+        counters: 1,
+        trend: [10, 15, 12, 18, 14, wait, wait],
+        zone: q.zoneId || "Zone",
+        status: status,
+        hourly: []
+      };
+    });
     return mockResponse(() => {
       const queue = dataset(scenarioId).queues.find((q) => q.id === queueId);
       if (!queue) throw new ApiError("Queue not found", 404);
@@ -60,19 +155,21 @@ export const byteforgeService = {
     });
   },
 
-  /**
-   * Join a queue and receive a token.
-   * Backend contract (when ready): POST /api/queues/{queueId}/join
-   *   body    -> { scenarioId, ...payload }
-   *   returns -> { tokenId, tokenNumber, queueId, queueName, zone, status,
-   *                position, peopleAhead, etaMin, slaMin, issuedAt }
-   */
   joinQueue(scenarioId, queueId, payload = {}) {
     if (!USE_MOCK) {
-      return request(`/api/queues/${queueId}/join`, {
+      // Backend expects Ticket creation for joining a queue
+      return request(`/tickets`, {
         method: "POST",
-        body: JSON.stringify({ scenarioId, ...payload }),
-      });
+        body: JSON.stringify({ scenarioId, queueId, ...payload, issuedAt: new Date().toISOString() }),
+      }).then(t => ({
+        ...t,
+        tokenId: t.id,
+        tokenNumber: t.tokenNumber,
+        queueName: t.label,
+        position: t.position,
+        etaMin: t.etaMin,
+        state: t.state
+      }));
     }
     return mockResponse(
       () => {
@@ -84,23 +181,50 @@ export const byteforgeService = {
     );
   },
 
-  getZones(scenarioId) {
-    if (!USE_MOCK) return request(`/facilities/${scenarioId}/zones`);
+  async getZones(scenarioId) {
+    if (!USE_MOCK) {
+      const res = await request("/zones");
+      return res.filter(z => z.facilityId === scenarioId).map(z => ({
+        ...z,
+        occupancy: z.occupancy || 0,
+        capacity: z.capacity || 100,
+        density: "moderate"
+      }));
+    }
     return mockResponse(() => dataset(scenarioId).zones);
   },
 
-  getStaff(scenarioId) {
-    if (!USE_MOCK) return request(`/facilities/${scenarioId}/staff`);
+  async getStaff(scenarioId) {
+    if (!USE_MOCK) {
+      const res = await request("/staff");
+      return res.filter(s => s.facilityId === scenarioId).map(s => ({
+        ...s,
+        servedToday: s.servedToday || 0,
+        status: s.status || "active"
+      }));
+    }
     return mockResponse(() => dataset(scenarioId).staff);
   },
 
-  getTickets(scenarioId) {
-    if (!USE_MOCK) return request(`/facilities/${scenarioId}/tickets`);
+  async getTickets(scenarioId) {
+    if (!USE_MOCK) {
+      const res = await request("/tickets");
+      return res.filter(t => t.facilityId === scenarioId).map(t => ({
+        ...t,
+        label: t.label || t.id,
+        position: t.position || 0,
+        etaMin: t.etaMin || 0,
+        issuedAt: t.issuedAt || "00:00",
+        state: t.state || "waiting"
+      }));
+    }
     return mockResponse(() => dataset(scenarioId).tickets);
   },
 
-  getAnalytics(scenarioId) {
-    if (!USE_MOCK) return request(`/facilities/${scenarioId}/analytics`);
+  async getAnalytics(scenarioId) {
+    if (!USE_MOCK) {
+      return request("/analytics").catch(() => ({ hourly: [], byQueue: [], retention: [] }));
+    }
     return mockResponse(() => {
       const d = dataset(scenarioId);
       return {
