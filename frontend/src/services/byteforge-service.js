@@ -238,4 +238,14 @@ export const byteforgeService = {
       };
     });
   },
+
+  async getPrediction(currentCrowd) {
+    if (!USE_MOCK) {
+      return request(`/queues/prediction?currentCrowd=${currentCrowd}`);
+    }
+    return mockResponse(() => ({
+      current_crowd: currentCrowd,
+      predicted_eta_minutes: Math.round(currentCrowd / 4.2)
+    }));
+  }
 };

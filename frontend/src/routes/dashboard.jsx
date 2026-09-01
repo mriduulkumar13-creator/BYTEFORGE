@@ -1,7 +1,10 @@
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell, PageHeader, RoleGate } from "@/components/layout/AppShell";
 import { QueueCard } from "@/components/queues/QueueCard";
 import { Badge, SectionHeading, StatCard, Surface } from "@/components/ui/primitives";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { LoadingState, Resource, Skeleton } from "@/components/ui/states";
 import { useApp } from "@/context/AppProvider";
 import { useResource } from "@/hooks/useResource";
@@ -27,6 +30,87 @@ export const Route = createFileRoute("/dashboard")({
 
 const severityTone = { critical: "critical", warning: "warning", info: "info" };
 
+function DynamicAIPrediction() {
+  const [prediction, setPrediction] = useState(null);
+  const [crowd, setCrowd] = useState(150);
+
+  useEffect(() => {
+    // Poll the AI service every 3 seconds for dynamic updates
+    const fetchLiveCountAndPrediction = async () => {
+      try {
+        // Fetch live crowd count from AI service
+        const countRes = await fetch("http://localhost:8000/live-count");
+        if (countRes.ok) {
+          const countData = await countRes.json();
+          const currentCrowd = countData.live_head_count || 0;
+          setCrowd(currentCrowd);
+          
+          // Fetch prediction based on live crowd
+          const res = await byteforgeService.getPrediction(currentCrowd);
+          setPrediction(res);
+        }
+      } catch (e) {
+        console.error("AI Service Error:", e);
+      }
+    };
+    
+    fetchLiveCountAndPrediction();
+    const interval = setInterval(fetchLiveCountAndPrediction, 3000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <Surface className="p-6 mb-8 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border-indigo-500/20">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-indigo-400">✨ AI Dynamic Prediction Engine</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Real-time ETAs powered by Machine Learning and Live Computer Vision
+          </p>
+          <div className="mt-4">
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="border-indigo-500/30 hover:bg-indigo-500/10 text-indigo-400">
+                  <span className="mr-2 h-2 w-2 rounded-full bg-red-500 animate-pulse"></span>
+                  View Live Camera
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[700px] bg-black/95 border-indigo-500/30">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center text-indigo-400">
+                    <span className="mr-2 h-2 w-2 rounded-full bg-red-500 animate-pulse"></span>
+                    Live AI Head Tracking
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="relative mt-2 overflow-hidden rounded-md border border-indigo-500/20 bg-black aspect-video flex items-center justify-center">
+                  <img 
+                    src="http://localhost:8000/video-feed" 
+                    alt="Live AI Camera Feed" 
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+        <div className="flex space-x-6 text-right">
+          <div>
+            <p className="text-sm text-muted-foreground uppercase tracking-wider">Live Crowd Count</p>
+            <p className="text-3xl font-bold font-mono">{crowd}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground uppercase tracking-wider">Est. Clearance Time</p>
+            <p className="text-3xl font-bold font-mono text-indigo-400">
+              {prediction ? `~${prediction.predicted_eta_minutes} mins` : "Loading..."}
+            </p>
+          </div>
+        </div>
+      </div>
+    </Surface>
+  );
+}
+
 function DashboardRoute() {
   return (
     <AppShell>
@@ -47,6 +131,9 @@ function Dashboard() {
         title="Operations dashboard"
         description={`${scenario.name} · ${scenario.description}`}
       />
+      
+      <DynamicAIPrediction />
+
       <Resource
         state={state}
         loading={
@@ -67,6 +154,7 @@ function Dashboard() {
                 <StatCard key={kpi.id} {...kpi} />
               ))}
             </div>
+
 
             <section>
               <SectionHeading

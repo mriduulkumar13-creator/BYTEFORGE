@@ -37,4 +37,22 @@ public class QueueService {
         existingQueue.setFacilityId(queue.getFacilityId());
         return queueRepository.save(existingQueue);
     }
+    
+    // AI Integration
+    public java.util.Map<String, Object> getDynamicPrediction(int currentCrowd) {
+        try {
+            org.springframework.web.client.RestTemplate restTemplate = new org.springframework.web.client.RestTemplate();
+            String aiServiceUrl = "http://localhost:8000/predict?current_crowd=" + currentCrowd;
+            
+            // This will automatically parse the JSON response from the Python API into a Map
+            java.util.Map<String, Object> response = restTemplate.getForObject(aiServiceUrl, java.util.Map.class);
+            return response;
+        } catch (Exception e) {
+            // Fallback in case Python service is down
+            java.util.Map<String, Object> errorResponse = new java.util.HashMap<>();
+            errorResponse.put("error", "AI service unreachable");
+            errorResponse.put("predicted_eta_minutes", (currentCrowd / 4)); // dumb math fallback
+            return errorResponse;
+        }
+    }
 }
