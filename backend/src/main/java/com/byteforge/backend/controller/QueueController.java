@@ -29,4 +29,9 @@ public class QueueController {
     public Queue updateQueue(@PathVariable String id,@RequestBody Queue queue){
         return queueService.updateQueue(id,queue);
     }
+    
+    @GetMapping("/prediction")
+    public java.util.Map<String, Object> getQueuePrediction(@RequestParam(defaultValue = "15") int currentCrowd) {
+        return queueService.getDynamicPrediction(currentCrowd);
+    }
 }
